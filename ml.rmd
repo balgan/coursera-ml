@@ -1,0 +1,159 @@
+---
+title: 'Peer-graded Assignment: Prediction Assignment Writeup'
+author: "Tiago Henriques"
+output:
+  html_document:
+  df_print: paged
+---
+  
+  
+  ```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+## Introduction
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+### Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+
+
+## First Steps
+
+### Setup of the environment
+Load the necessary packages for the analysis. In order to ensure reproducibility of the analysis, we will set the seed to 1918.
+
+```{r}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+library(randomForest)
+library(corrplot)
+set.seed(1918)
+```
+
+### Load the data
+
+```{r}
+train_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(url(train_url), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(test_url), na.strings=c("NA","#DIV/0!",""))
+```
+
+### Explore the data
+```{r}
+dim(training)
+dim(testing)
+
+sum(is.na(training))
+```
+
+There are 19622 observations on the training set and 20 observations in the testing set. The data is composed by 160 variables and contains 1925102 missing values.
+
+
+### Handle missing values
+
+First, we should find the columns that are in its majority composed by missing values (more than 90%) and exclude those from the analysis.
+
+```{r}
+training <- training[,!sapply(training, function(x) sum(is.na(x))/length(x))>0.9]
+testing <- testing[,!sapply(testing, function(x) sum(is.na(x))/length(x))>0.9]
+
+dim(training)
+dim(testing)
+```
+
+The dataset is now composed by 60 variables.
+
+
+### Remove variables that are not relevant for the analysis (username, timestamps)
+
+```{r}
+training <- training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+
+dim(training)
+dim(testing)
+```
+
+### Prepare data
+
+Split the training set - 70% to train and 30% to test. Even though we have a separated testing set, this should only be used for the quiz results.
+
+```{r}
+inTrain = createDataPartition(training$classe, p = 0.7, list=FALSE)
+train_set = training[ inTrain,]
+test_set = training[-inTrain,]
+
+dim(train_set)
+dim(test_set)
+```
+
+### Correlation analysis
+
+Before proceding with model building, a correlation analysis should be performed.
+
+```{r}
+corMatrix <- cor(train_set[, -53])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+The highly correlated variables are shown in dark blue and dark red in the plot above.
+
+
+## Building a model
+
+Random Forest and Decision Tree are the methods going to be used to create a model. One will be selected (according to its accuracy) to use in the quiz predictions.
+
+### Random forests
+
+```{r}
+mod_rf <- train(classe ~ ., data = train_set, method="rf")
+
+pred_rf <- predict(mod_rf, test_set)
+
+conf_mat <- confusionMatrix(pred_rf, test_set$classe)
+conf_mat$overall['Accuracy']
+
+plot(mod_rf)
+```
+
+### Decision trees
+
+```{r}
+mod_dt <- train(classe ~ ., data = train_set, method = "rpart")
+mod_dt$finalModel
+rattle::fancyRpartPlot(mod_dt$finalModel)
+```
+```{r}
+pred_dt <- predict(mod_dt, newdata = test_set)
+
+conf_mat <- confusionMatrix(pred_dt, test_set$classe)
+conf_mat$overall['Accuracy']
+```
+
+## Choosing the model to be used
+
+Accuracy of the models tested:
+  1. Random Forests: 0.9913339
+2. Decision Trees: 0.5041631
+
+Since the accuracy of the first model (random forests) is higher, this will be the model used to predict the 20 quiz results in the testing dataset.
+
+## Final prediction
+```{r}
+pred_testing <- predict(mod_rf, newdata=testing)
+pred_testing
+```
+
